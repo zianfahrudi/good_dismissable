@@ -1,5 +1,5 @@
 name: good_dismissable
-description: A better Dismissible experience for Flutter — precise, polished, and visually clean. Ideal for cards, lists, and swipe-to-delete interactions that need to look as good as they feel.
+description: A polished Flutter alternative to Dismissible with cleaner swipe-to-dismiss and reveal actions for cards, lists, and inbox-style UIs.
 version: 1.1.0
 homepage: https://github.com/ZianFahrudy/good_dismissable
 repository: https://github.com/ZianFahrudy/good_dismissable
