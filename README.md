@@ -10,10 +10,10 @@ Ideal for cards, lists, and swipe-to-delete interactions that need to **look as 
 ## ✨ Features
 
 - ✅ **Clean border radius handling**
-- ✅ **Swipe background appears behind the card**
-- ✅ **Customizable background (icons, text, actions)**
-- ✅ **Can disable swipe left or swipe right independently**
+- ✅ **Classic swipe-to-dismiss with animated background**
 - ✅ **LinkedIn-style reveal action that snaps open and stays tappable**
+- ✅ **Customizable colors, icons, text, and action widgets**
+- ✅ **Can disable swipe left or swipe right independently**
 - ✅ **Drop-in replacement for Flutter’s `Dismissible`**
 
 ---
@@ -24,7 +24,7 @@ Add the following to your `pubspec.yaml`:
 
 ```yaml
 dependencies:
-  good_dismissible: ^1.0.0
+  good_dismissable: ^1.1.0
 ```
 
 ## 📦 Import the Package
@@ -34,6 +34,56 @@ import 'package:good_dismissable/good_dismissable.dart';
 ```
 
 ## 📦 Example
+
+### Classic dismiss
+
+```dart
+GoodDismissableVariants.delete(
+  onDismissed: () => removeItem(),
+  child: const ListTile(title: Text('Swipe to delete')),
+)
+```
+
+### LinkedIn-style reveal action
+
+```dart
+GoodDismissableVariants.linkedInDelete(
+  onActionPressed: () => removeItem(),
+  child: const ListTile(title: Text('Swipe left to reveal delete')),
+)
+```
+
+### Fully customized reveal action
+
+```dart
+GoodDismissable(
+  swipeBehavior: GoodDismissableSwipeBehavior.reveal,
+  enableSwipeToLeft: true,
+  enableSwipeToRight: false,
+  backgroundColor: const Color(0xFFD11124),
+  borderRadius: 20,
+  revealActionExtent: 104,
+  onActionPressed: () => removeItem(),
+  actionContent: const Column(
+    mainAxisAlignment: MainAxisAlignment.center,
+    children: [
+      Icon(Icons.delete_outline, color: Colors.white, size: 28),
+      SizedBox(height: 6),
+      Text(
+        'Delete',
+        style: TextStyle(
+          color: Colors.white,
+          fontWeight: FontWeight.w700,
+          fontSize: 16,
+        ),
+      ),
+    ],
+  ),
+  child: const ListTile(title: Text('Custom reveal action')),
+)
+```
+
+### Full app example
 
 ```dart
 class MyHomePage extends StatefulWidget {
@@ -104,15 +154,15 @@ class _MyHomePageState extends State<MyHomePage> {
           final email = emails[index];
 
           // Different card types based on index for demonstration
-          if (index % 3 == 0) {
-            // Delete variant
+          if (index % 4 == 0) {
+            // Classic delete variant
             return GoodDismissableVariants.delete(
               key: ValueKey(email.id),
               enableSwipeToLeft: false,
               onDismissed: () => _removeEmail(email.id),
               child: _buildEmailTile(email, index),
             );
-          } else if (index % 3 == 1) {
+          } else if (index % 4 == 1) {
             // Archive variant
             return GoodDismissableVariants.archive(
               key: ValueKey(email.id),
@@ -120,7 +170,7 @@ class _MyHomePageState extends State<MyHomePage> {
               onDismissed: () => _removeEmail(email.id),
               child: _buildEmailTile(email, index),
             );
-          } else {
+          } else if (index % 4 == 2) {
             // Custom variant with progress callback
             return GoodDismissable(
               key: ValueKey(email.id),
@@ -164,6 +214,12 @@ class _MyHomePageState extends State<MyHomePage> {
               child: _buildEmailTile(email, index),
             );
           }
+
+          return GoodDismissableVariants.linkedInDelete(
+            key: ValueKey(email.id),
+            onActionPressed: () => _removeEmail(email.id),
+            child: _buildEmailTile(email, index),
+          );
         },
       ),
     );
@@ -228,6 +284,16 @@ GoodDismissableVariants.linkedInDelete(
   child: const ListTile(title: Text('Swipe left to reveal delete')),
 )
 ```
+
+## 🧩 Main API
+
+- `GoodDismissableSwipeBehavior.dismiss`: classic swipe-to-dismiss behavior.
+- `GoodDismissableSwipeBehavior.reveal`: swipe opens an action pane and waits for a tap.
+- `enableSwipeToLeft` and `enableSwipeToRight`: toggle each swipe direction independently.
+- `backgroundContent`: custom background for classic dismiss behavior.
+- `actionContent`: custom action widget for reveal behavior.
+- `onDismissed`: called after a classic dismiss finishes.
+- `onActionPressed`: called when the revealed action is tapped.
 
 ## Issues & Suggestions
 

@@ -202,7 +202,7 @@ class _GoodDismissableState extends State<GoodDismissable>
       );
 
       if (currentOffset != clampedOffset) {
-        _revealOffsetController.value = clampedOffset.toDouble();
+        _revealOffsetController.value = clampedOffset;
       }
     } else if (_revealOffsetController.value != 0) {
       _revealOffsetController.value = 0;

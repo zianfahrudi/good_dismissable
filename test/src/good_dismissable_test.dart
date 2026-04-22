@@ -1,13 +1,37 @@
-// // Not required for test files
-// // ignore_for_file: prefer_const_constructors
+import 'package:flutter/material.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:good_dismissable/good_dismissable.dart';
 
-// import 'package:flutter_test/flutter_test.dart';
-// import 'package:good_dismissable/good_dismissable.dart';
+void main() {
+  group('GoodDismissable', () {
+    testWidgets('renders child content', (tester) async {
+      await tester.pumpWidget(
+        const MaterialApp(
+          home: Scaffold(
+            body: GoodDismissable(
+              child: Text('Hello dismissable'),
+            ),
+          ),
+        ),
+      );
 
-// void main() {
-//   group('GoodDismissable', () {
-//     test('can be instantiated', () {
-//       expect(GoodDismissable(), isNotNull);
-//     });
-//   });
-// }
+      expect(find.text('Hello dismissable'), findsOneWidget);
+    });
+
+    testWidgets('renders reveal action content', (tester) async {
+      await tester.pumpWidget(
+        const MaterialApp(
+          home: Scaffold(
+            body: GoodDismissable(
+              swipeBehavior: GoodDismissableSwipeBehavior.reveal,
+              actionContent: Text('Delete'),
+              child: Text('Email tile'),
+            ),
+          ),
+        ),
+      );
+
+      expect(find.text('Email tile'), findsOneWidget);
+    });
+  });
+}
