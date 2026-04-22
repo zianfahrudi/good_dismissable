@@ -1,3 +1,7 @@
+## 1.1.1
+
+- Updated package metadata to satisfy pub.dev description length guidance.
+
 ## 1.1.0
 
 - Added LinkedIn-style reveal actions that snap open and stay tappable.

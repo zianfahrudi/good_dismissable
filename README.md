@@ -24,7 +24,7 @@ Add the following to your `pubspec.yaml`:
 
 ```yaml
 dependencies:
-  good_dismissable: ^1.1.0
+  good_dismissable: ^1.1.1
 ```
 
 ## 📦 Import the Package
