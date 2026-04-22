@@ -2,6 +2,8 @@
 
 import 'package:flutter/material.dart';
 
+enum GoodDismissableSwipeBehavior { dismiss, reveal }
+
 /// A customizable swipe card widget that mimics Gmail iOS style dismissible behavior
 /// with a background card that appears behind the main card during swipe gesture
 class GoodDismissable extends StatefulWidget {
@@ -10,7 +12,9 @@ class GoodDismissable extends StatefulWidget {
     super.key,
 
     this.backgroundContent,
+    this.actionContent,
     this.onDismissed,
+    this.onActionPressed,
     this.onSwipeProgress,
     this.backgroundColor = Colors.red,
     this.cardOffset = 8.0,
@@ -22,11 +26,17 @@ class GoodDismissable extends StatefulWidget {
     this.backgroundElevation = 2.0,
     this.mainCardElevation = 4.0,
     this.dismissible = true,
+    this.enableSwipeToLeft = true,
+    this.enableSwipeToRight = true,
+    this.swipeBehavior = GoodDismissableSwipeBehavior.dismiss,
     this.dismissDirections = const {
       DismissDirection.startToEnd,
       DismissDirection.endToStart,
     },
     this.dismissThreshold = 0.4,
+    this.revealActionExtent = 96.0,
+    this.revealOpenThreshold = 0.5,
+    this.closeOnActionTap = true,
     this.margin,
   });
 
@@ -37,8 +47,15 @@ class GoodDismissable extends StatefulWidget {
   /// If null, a default delete icon will be shown
   final Widget? backgroundContent;
 
+  /// Content shown inside the action button when using reveal swipe behavior.
+  final Widget? actionContent;
+
   /// Callback function called when the card is dismissed
   final VoidCallback? onDismissed;
+
+  /// Callback function called when the revealed action is tapped.
+  /// Falls back to [onDismissed] when null.
+  final VoidCallback? onActionPressed;
 
   /// Callback function called during swipe with progress value (0.0 to 1.0)
   final ValueChanged<double>? onSwipeProgress;
@@ -73,11 +90,29 @@ class GoodDismissable extends StatefulWidget {
   /// Whether to enable swipe to dismiss functionality
   final bool dismissible;
 
+  /// Whether the card can be swiped toward the physical left side.
+  final bool enableSwipeToLeft;
+
+  /// Whether the card can be swiped toward the physical right side.
+  final bool enableSwipeToRight;
+
+  /// Determines whether swipe should dismiss immediately or reveal a tappable action.
+  final GoodDismissableSwipeBehavior swipeBehavior;
+
   /// Direction(s) allowed for dismissing
   final Set<DismissDirection> dismissDirections;
 
   /// Threshold for triggering dismiss (0.0 to 1.0)
   final double dismissThreshold;
+
+  /// Width of the revealed action button.
+  final double revealActionExtent;
+
+  /// Drag progress needed to keep the action pane open after release.
+  final double revealOpenThreshold;
+
+  /// Whether the action pane should close after the action is tapped.
+  final bool closeOnActionTap;
 
   /// Margin around the entire card widget
   final EdgeInsetsGeometry? margin;
@@ -87,8 +122,9 @@ class GoodDismissable extends StatefulWidget {
 }
 
 class _GoodDismissableState extends State<GoodDismissable>
-    with SingleTickerProviderStateMixin {
+    with TickerProviderStateMixin {
   late AnimationController _controller;
+  late AnimationController _revealOffsetController;
   late Animation<double> _offsetAnimation;
   late Animation<double> _scaleAnimation;
   late Animation<double> _opacityAnimation;
@@ -96,6 +132,14 @@ class _GoodDismissableState extends State<GoodDismissable>
   @override
   void initState() {
     super.initState();
+    _revealOffsetController = AnimationController.unbounded(vsync: this)
+      ..addListener(() {
+        if (mounted &&
+            widget.swipeBehavior == GoodDismissableSwipeBehavior.reveal) {
+          setState(() {});
+          _notifyRevealSwipeProgress();
+        }
+      });
     _initializeAnimations();
   }
 
@@ -149,10 +193,25 @@ class _GoodDismissableState extends State<GoodDismissable>
       _controller.dispose();
       _initializeAnimations();
     }
+
+    if (widget.swipeBehavior == GoodDismissableSwipeBehavior.reveal) {
+      final currentOffset = _revealOffsetController.value;
+      final clampedOffset = currentOffset.clamp(
+        -widget.revealActionExtent,
+        widget.revealActionExtent,
+      );
+
+      if (currentOffset != clampedOffset) {
+        _revealOffsetController.value = clampedOffset.toDouble();
+      }
+    } else if (_revealOffsetController.value != 0) {
+      _revealOffsetController.value = 0;
+    }
   }
 
   @override
   void dispose() {
+    _revealOffsetController.dispose();
     _controller.dispose();
     super.dispose();
   }
@@ -167,6 +226,30 @@ class _GoodDismissableState extends State<GoodDismissable>
             color: Colors.white,
             size: 24,
           ),
+        );
+  }
+
+  Widget _buildActionContent() {
+    return widget.actionContent ??
+        widget.backgroundContent ??
+        const Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              Icons.delete_outline,
+              color: Colors.white,
+              size: 26,
+            ),
+            SizedBox(height: 6),
+            Text(
+              'Delete',
+              style: TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.w700,
+                fontSize: 16,
+              ),
+            ),
+          ],
         );
   }
 
@@ -201,27 +284,216 @@ class _GoodDismissableState extends State<GoodDismissable>
     );
   }
 
-  Widget _buildMainCard() {
-    if (!widget.dismissible) {
-      return Card(
-        elevation: widget.mainCardElevation,
-        margin: EdgeInsets.zero,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(widget.borderRadius),
+  Set<DismissDirection> _resolvedDismissDirections(BuildContext context) {
+    final textDirection = Directionality.of(context);
+    final leftDirection = textDirection == TextDirection.ltr
+        ? DismissDirection.endToStart
+        : DismissDirection.startToEnd;
+    final rightDirection = textDirection == TextDirection.ltr
+        ? DismissDirection.startToEnd
+        : DismissDirection.endToStart;
+
+    final allowedDirections = <DismissDirection>{};
+
+    for (final direction in widget.dismissDirections) {
+      if (direction == DismissDirection.horizontal) {
+        allowedDirections
+          ..add(DismissDirection.startToEnd)
+          ..add(DismissDirection.endToStart);
+        continue;
+      }
+
+      if (direction == DismissDirection.startToEnd ||
+          direction == DismissDirection.endToStart) {
+        allowedDirections.add(direction);
+      }
+    }
+
+    if (!widget.enableSwipeToLeft) {
+      allowedDirections.remove(leftDirection);
+    }
+
+    if (!widget.enableSwipeToRight) {
+      allowedDirections.remove(rightDirection);
+    }
+
+    return allowedDirections;
+  }
+
+  DismissDirection _leftDismissDirection(BuildContext context) {
+    return Directionality.of(context) == TextDirection.ltr
+        ? DismissDirection.endToStart
+        : DismissDirection.startToEnd;
+  }
+
+  DismissDirection _rightDismissDirection(BuildContext context) {
+    return Directionality.of(context) == TextDirection.ltr
+        ? DismissDirection.startToEnd
+        : DismissDirection.endToStart;
+  }
+
+  Widget _buildCardChild() {
+    return Card(
+      elevation: widget.mainCardElevation,
+      margin: EdgeInsets.zero,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(widget.borderRadius),
+      ),
+      child: widget.child,
+    );
+  }
+
+  void _notifyRevealSwipeProgress() {
+    if (widget.revealActionExtent <= 0) {
+      widget.onSwipeProgress?.call(0);
+      return;
+    }
+
+    final progress =
+        (_revealOffsetController.value.abs() / widget.revealActionExtent).clamp(
+          0.0,
+          1.0,
+        );
+    widget.onSwipeProgress?.call(progress);
+  }
+
+  double _minRevealOffset(Set<DismissDirection> dismissDirections) {
+    return dismissDirections.contains(_leftDismissDirection(context))
+        ? -widget.revealActionExtent
+        : 0;
+  }
+
+  double _maxRevealOffset(Set<DismissDirection> dismissDirections) {
+    return dismissDirections.contains(_rightDismissDirection(context))
+        ? widget.revealActionExtent
+        : 0;
+  }
+
+  void _animateRevealTo(double targetOffset) {
+    _revealOffsetController.animateTo(
+      targetOffset,
+      duration: widget.animationDuration,
+      curve: widget.animationCurve,
+    );
+  }
+
+  void _handleRevealDragStart() {
+    _revealOffsetController.stop();
+  }
+
+  void _handleRevealDragUpdate(
+    DragUpdateDetails details,
+    Set<DismissDirection> dismissDirections,
+  ) {
+    final nextOffset =
+        _revealOffsetController.value + (details.primaryDelta ?? 0);
+
+    _revealOffsetController.value = nextOffset.clamp(
+      _minRevealOffset(dismissDirections),
+      _maxRevealOffset(dismissDirections),
+    );
+  }
+
+  void _handleRevealDragEnd(
+    DragEndDetails details,
+    Set<DismissDirection> dismissDirections,
+  ) {
+    final velocity = details.primaryVelocity ?? 0;
+    final currentOffset = _revealOffsetController.value;
+    final openThreshold =
+        widget.revealActionExtent * widget.revealOpenThreshold;
+    double targetOffset = 0;
+
+    if (velocity.abs() > 250) {
+      if (velocity < 0 &&
+          dismissDirections.contains(_leftDismissDirection(context))) {
+        targetOffset = -widget.revealActionExtent;
+      } else if (velocity > 0 &&
+          dismissDirections.contains(_rightDismissDirection(context))) {
+        targetOffset = widget.revealActionExtent;
+      }
+    } else if (currentOffset.abs() >= openThreshold) {
+      targetOffset = currentOffset.isNegative
+          ? _minRevealOffset(dismissDirections)
+          : _maxRevealOffset(dismissDirections);
+    }
+
+    _animateRevealTo(targetOffset);
+  }
+
+  DismissDirection? _currentRevealDirection(
+    Set<DismissDirection> dismissDirections,
+  ) {
+    final currentOffset = _revealOffsetController.value;
+
+    if (currentOffset < 0) {
+      return _leftDismissDirection(context);
+    }
+
+    if (currentOffset > 0) {
+      return _rightDismissDirection(context);
+    }
+
+    if (dismissDirections.length == 1) {
+      return dismissDirections.first;
+    }
+
+    return null;
+  }
+
+  void _handleActionTap() {
+    final callback = widget.onActionPressed ?? widget.onDismissed;
+    callback?.call();
+
+    if (mounted && widget.closeOnActionTap) {
+      _animateRevealTo(0);
+    }
+  }
+
+  Widget _buildRevealActionPane(Set<DismissDirection> dismissDirections) {
+    final activeDirection = _currentRevealDirection(dismissDirections);
+    if (activeDirection == null) {
+      return const SizedBox.shrink();
+    }
+
+    final isRightAligned = activeDirection == _leftDismissDirection(context);
+
+    return Positioned.fill(
+      child: Align(
+        alignment: isRightAligned
+            ? Alignment.centerRight
+            : Alignment.centerLeft,
+        child: SizedBox(
+          width: widget.revealActionExtent,
+          child: Material(
+            color: widget.backgroundColor,
+            borderRadius: BorderRadius.circular(widget.borderRadius),
+            elevation: widget.backgroundElevation,
+            child: InkWell(
+              onTap: _handleActionTap,
+              borderRadius: BorderRadius.circular(widget.borderRadius),
+              child: _buildActionContent(),
+            ),
+          ),
         ),
-        child: widget.child,
-      );
+      ),
+    );
+  }
+
+  Widget _buildDismissibleCard(Set<DismissDirection> dismissDirections) {
+    if (!widget.dismissible || dismissDirections.isEmpty) {
+      return _buildCardChild();
     }
 
     return Dismissible(
       key: UniqueKey(),
       background: Container(),
       secondaryBackground: Container(),
-      direction: widget.dismissDirections.length == 1
-          ? widget.dismissDirections.first
+      direction: dismissDirections.length == 1
+          ? dismissDirections.first
           : DismissDirection.horizontal,
       dismissThresholds: {
-        for (final direction in widget.dismissDirections)
+        for (final direction in dismissDirections)
           direction: widget.dismissThreshold,
       },
       onUpdate: (details) {
@@ -232,19 +504,33 @@ class _GoodDismissableState extends State<GoodDismissable>
       onDismissed: (direction) {
         widget.onDismissed?.call();
       },
-      child: Card(
-        elevation: widget.mainCardElevation,
-        margin: EdgeInsets.zero,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(widget.borderRadius),
-        ),
-        child: widget.child,
+      child: _buildCardChild(),
+    );
+  }
+
+  Widget _buildRevealCard(Set<DismissDirection> dismissDirections) {
+    if (!widget.dismissible || dismissDirections.isEmpty) {
+      return _buildCardChild();
+    }
+
+    return GestureDetector(
+      onHorizontalDragStart: (_) => _handleRevealDragStart(),
+      onHorizontalDragUpdate: (details) =>
+          _handleRevealDragUpdate(details, dismissDirections),
+      onHorizontalDragEnd: (details) =>
+          _handleRevealDragEnd(details, dismissDirections),
+      child: Transform.translate(
+        offset: Offset(_revealOffsetController.value, 0),
+        child: _buildCardChild(),
       ),
     );
   }
 
   @override
   Widget build(BuildContext context) {
+    final dismissDirections = _resolvedDismissDirections(context);
+    final showBackground = widget.dismissible && dismissDirections.isNotEmpty;
+
     return Container(
       margin:
           widget.margin ??
@@ -252,8 +538,16 @@ class _GoodDismissableState extends State<GoodDismissable>
       child: Stack(
         clipBehavior: Clip.none,
         children: [
-          _buildBackgroundCard(),
-          _buildMainCard(),
+          if (showBackground &&
+              widget.swipeBehavior == GoodDismissableSwipeBehavior.dismiss)
+            _buildBackgroundCard(),
+          if (showBackground &&
+              widget.swipeBehavior == GoodDismissableSwipeBehavior.reveal)
+            _buildRevealActionPane(dismissDirections),
+          if (widget.swipeBehavior == GoodDismissableSwipeBehavior.reveal)
+            _buildRevealCard(dismissDirections)
+          else
+            _buildDismissibleCard(dismissDirections),
         ],
       ),
     );
@@ -267,12 +561,42 @@ class GoodDismissableVariants {
     required Widget child,
     Key? key,
     VoidCallback? onDismissed,
+    VoidCallback? onActionPressed,
     ValueChanged<double>? onSwipeProgress,
+    bool enableSwipeToLeft = true,
+    bool enableSwipeToRight = true,
+    GoodDismissableSwipeBehavior swipeBehavior =
+        GoodDismissableSwipeBehavior.dismiss,
+    double revealActionExtent = 104.0,
   }) {
     return GoodDismissable(
       key: key,
       onDismissed: onDismissed,
+      onActionPressed: onActionPressed,
       onSwipeProgress: onSwipeProgress,
+      enableSwipeToLeft: enableSwipeToLeft,
+      enableSwipeToRight: enableSwipeToRight,
+      swipeBehavior: swipeBehavior,
+      revealActionExtent: revealActionExtent,
+      actionContent: const Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(
+            Icons.delete_outline,
+            color: Colors.white,
+            size: 28,
+          ),
+          SizedBox(height: 6),
+          Text(
+            'Delete',
+            style: TextStyle(
+              color: Colors.white,
+              fontWeight: FontWeight.w700,
+              fontSize: 16,
+            ),
+          ),
+        ],
+      ),
       backgroundContent: Row(
         children: [
           Expanded(
@@ -309,13 +633,43 @@ class GoodDismissableVariants {
     required Widget child,
     Key? key,
     VoidCallback? onDismissed,
+    VoidCallback? onActionPressed,
     ValueChanged<double>? onSwipeProgress,
+    bool enableSwipeToLeft = true,
+    bool enableSwipeToRight = true,
+    GoodDismissableSwipeBehavior swipeBehavior =
+        GoodDismissableSwipeBehavior.dismiss,
+    double revealActionExtent = 104.0,
   }) {
     return GoodDismissable(
       key: key,
       onDismissed: onDismissed,
+      onActionPressed: onActionPressed,
       onSwipeProgress: onSwipeProgress,
+      enableSwipeToLeft: enableSwipeToLeft,
+      enableSwipeToRight: enableSwipeToRight,
+      swipeBehavior: swipeBehavior,
+      revealActionExtent: revealActionExtent,
       backgroundColor: Colors.blue,
+      actionContent: const Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(
+            Icons.archive_outlined,
+            color: Colors.white,
+            size: 28,
+          ),
+          SizedBox(height: 6),
+          Text(
+            'Archive',
+            style: TextStyle(
+              color: Colors.white,
+              fontWeight: FontWeight.w700,
+              fontSize: 16,
+            ),
+          ),
+        ],
+      ),
       backgroundContent: Row(
         children: [
           Expanded(
@@ -352,13 +706,43 @@ class GoodDismissableVariants {
     required Widget child,
     Key? key,
     VoidCallback? onDismissed,
+    VoidCallback? onActionPressed,
     ValueChanged<double>? onSwipeProgress,
+    bool enableSwipeToLeft = true,
+    bool enableSwipeToRight = true,
+    GoodDismissableSwipeBehavior swipeBehavior =
+        GoodDismissableSwipeBehavior.dismiss,
+    double revealActionExtent = 104.0,
   }) {
     return GoodDismissable(
       key: key,
       onDismissed: onDismissed,
+      onActionPressed: onActionPressed,
       onSwipeProgress: onSwipeProgress,
+      enableSwipeToLeft: enableSwipeToLeft,
+      enableSwipeToRight: enableSwipeToRight,
+      swipeBehavior: swipeBehavior,
+      revealActionExtent: revealActionExtent,
       backgroundColor: Colors.green,
+      actionContent: const Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(
+            Icons.mark_email_read_outlined,
+            color: Colors.white,
+            size: 28,
+          ),
+          SizedBox(height: 6),
+          Text(
+            'Mark Read',
+            style: TextStyle(
+              color: Colors.white,
+              fontWeight: FontWeight.w700,
+              fontSize: 16,
+            ),
+          ),
+        ],
+      ),
       backgroundContent: Row(
         children: [
           Expanded(
@@ -382,6 +766,48 @@ class GoodDismissableVariants {
               Icons.mark_email_read,
               color: Colors.white,
               size: 24,
+            ),
+          ),
+        ],
+      ),
+      child: child,
+    );
+  }
+
+  /// LinkedIn-style delete action that snaps open and keeps the action tappable.
+  static GoodDismissable linkedInDelete({
+    required Widget child,
+    Key? key,
+    VoidCallback? onActionPressed,
+    ValueChanged<double>? onSwipeProgress,
+    bool enableSwipeToLeft = true,
+    bool enableSwipeToRight = false,
+    double revealActionExtent = 108.0,
+  }) {
+    return GoodDismissable(
+      key: key,
+      onActionPressed: onActionPressed,
+      onSwipeProgress: onSwipeProgress,
+      enableSwipeToLeft: enableSwipeToLeft,
+      enableSwipeToRight: enableSwipeToRight,
+      swipeBehavior: GoodDismissableSwipeBehavior.reveal,
+      revealActionExtent: revealActionExtent,
+      backgroundColor: const Color(0xFFD11124),
+      actionContent: const Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(
+            Icons.delete_outline,
+            color: Colors.white,
+            size: 28,
+          ),
+          SizedBox(height: 6),
+          Text(
+            'Delete',
+            style: TextStyle(
+              color: Colors.white,
+              fontWeight: FontWeight.w700,
+              fontSize: 16,
             ),
           ),
         ],

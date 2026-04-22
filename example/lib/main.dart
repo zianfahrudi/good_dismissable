@@ -104,21 +104,23 @@ class _MyHomePageState extends State<MyHomePage> {
           final email = emails[index];
 
           // Different card types based on index for demonstration
-          if (index % 3 == 0) {
-            // Delete variant
+          if (index % 4 == 0) {
+            // Delete variant: swipe right only
             return GoodDismissableVariants.delete(
               key: ValueKey(email.id),
+              enableSwipeToLeft: false,
               onDismissed: () => _removeEmail(email.id),
               child: _buildEmailTile(email, index),
             );
-          } else if (index % 3 == 1) {
-            // Archive variant
+          } else if (index % 4 == 1) {
+            // Archive variant: swipe left only
             return GoodDismissableVariants.archive(
               key: ValueKey(email.id),
+              enableSwipeToRight: false,
               onDismissed: () => _removeEmail(email.id),
               child: _buildEmailTile(email, index),
             );
-          } else {
+          } else if (index % 4 == 2) {
             // Custom variant with progress callback
             return GoodDismissable(
               key: ValueKey(email.id),
@@ -162,6 +164,13 @@ class _MyHomePageState extends State<MyHomePage> {
               child: _buildEmailTile(email, index),
             );
           }
+
+          // LinkedIn-style action: swipe left, snap open, then tap delete
+          return GoodDismissableVariants.linkedInDelete(
+            key: ValueKey(email.id),
+            onActionPressed: () => _removeEmail(email.id),
+            child: _buildEmailTile(email, index),
+          );
         },
       ),
     );

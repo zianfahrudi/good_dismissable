@@ -12,6 +12,8 @@ Ideal for cards, lists, and swipe-to-delete interactions that need to **look as 
 - ✅ **Clean border radius handling**
 - ✅ **Swipe background appears behind the card**
 - ✅ **Customizable background (icons, text, actions)**
+- ✅ **Can disable swipe left or swipe right independently**
+- ✅ **LinkedIn-style reveal action that snaps open and stays tappable**
 - ✅ **Drop-in replacement for Flutter’s `Dismissible`**
 
 ---
@@ -106,6 +108,7 @@ class _MyHomePageState extends State<MyHomePage> {
             // Delete variant
             return GoodDismissableVariants.delete(
               key: ValueKey(email.id),
+              enableSwipeToLeft: false,
               onDismissed: () => _removeEmail(email.id),
               child: _buildEmailTile(email, index),
             );
@@ -113,6 +116,7 @@ class _MyHomePageState extends State<MyHomePage> {
             // Archive variant
             return GoodDismissableVariants.archive(
               key: ValueKey(email.id),
+              enableSwipeToRight: false,
               onDismissed: () => _removeEmail(email.id),
               child: _buildEmailTile(email, index),
             );
@@ -203,6 +207,26 @@ class _MyHomePageState extends State<MyHomePage> {
     );
   }
 }
+```
+
+You can also control the swipe direction directly:
+
+```dart
+GoodDismissable(
+  enableSwipeToLeft: false,
+  enableSwipeToRight: true,
+  onDismissed: () {},
+  child: const ListTile(title: Text('Swipe right only')),
+)
+```
+
+For a LinkedIn-style action that stops, stays open, and can be tapped:
+
+```dart
+GoodDismissableVariants.linkedInDelete(
+  onActionPressed: () {},
+  child: const ListTile(title: Text('Swipe left to reveal delete')),
+)
 ```
 
 ## Issues & Suggestions
